@@ -802,7 +802,7 @@ async fn install_extension() -> Result<String> {
     }
     #[cfg(target_os = "macos")]
     {
-        let _ = tokio::process::Command::new("open").arg(&xpi_url).spawn();
+        open_xpi_with_firefox_macos(&xpi_url).await?;
     }
     #[cfg(target_os = "windows")]
     {
@@ -815,6 +815,41 @@ async fn install_extension() -> Result<String> {
     msg.push_str("       Click \"Add\" when prompted to install the extension.\n");
 
     Ok(msg)
+}
+
+#[cfg(target_os = "macos")]
+async fn open_xpi_with_firefox_macos(xpi_url: &str) -> Result<()> {
+    let app_name_result = run_macos_open(&["-a", "Firefox", xpi_url]).await;
+    if app_name_result.is_ok() {
+        return Ok(());
+    }
+
+    let bundle_id_result = run_macos_open(&["-b", "org.mozilla.firefox", xpi_url]).await;
+    if bundle_id_result.is_ok() {
+        return Ok(());
+    }
+
+    Err(anyhow::anyhow!(
+        "Could not open Firefox to install the browser extension. Tried `open -a Firefox` and `open -b org.mozilla.firefox`. Make sure Firefox is installed, then run `jcode browser setup` again. Details: app name failed: {}; bundle id failed: {}",
+        app_name_result.unwrap_err(),
+        bundle_id_result.unwrap_err()
+    ))
+}
+
+#[cfg(target_os = "macos")]
+async fn run_macos_open(args: &[&str]) -> Result<()> {
+    let display_command = format!("open {}", args.join(" "));
+    let status = tokio::process::Command::new("open")
+        .args(args)
+        .status()
+        .await
+        .with_context(|| format!("failed to start `{display_command}`"))?;
+
+    if !status.success() {
+        return Err(anyhow::anyhow!("`{display_command}` exited with {status}"));
+    }
+
+    Ok(())
 }
 
 pub async fn run_setup_command() -> Result<()> {
